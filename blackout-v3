@@ -1,0 +1,226 @@
+#!/bin/bash
+# blackout v3 - Actually working display blackout
+# Uses brightness-only approach to avoid color distortion
+
+set -euo pipefail
+
+VERSION="3.0.0"
+SCRIPT_NAME="blackout"
+STATE_DIR="$HOME/.local/state/$SCRIPT_NAME"
+STATE_FILE="$STATE_DIR/display_state"
+BRIGHTNESS_BACKUP="$STATE_DIR/brightness_backup"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+mkdir -p "$STATE_DIR"
+
+# Auto-detect display
+detect_display() {
+    if [ -e /tmp/.X1-lock ]; then
+        echo ":1"
+    elif [ -e /tmp/.X0-lock ]; then
+        echo ":0"
+    else
+        echo "${DISPLAY:-:0}"
+    fi
+}
+# Get connected outputs
+get_outputs() {
+    DISPLAY="$1" xrandr 2>/dev/null | grep " connected" | awk '{print $1}'
+}
+
+# Save current brightness
+save_brightness() {
+    local display="$1"
+    > "$BRIGHTNESS_BACKUP"
+    
+    for output in $(get_outputs "$display"); do
+        # Get current brightness (default to 1.0 if not set)
+        local brightness=$(DISPLAY="$display" xrandr --verbose 2>/dev/null | awk -v out="$output" '
+            $0 ~ out " connected" {found=1}
+            found && /Brightness:/ {print $2; exit}
+        ')
+        [ -z "$brightness" ] && brightness="1.0"
+        echo "$output=$brightness" >> "$BRIGHTNESS_BACKUP"
+    done
+}
+
+# Apply blackout (brightness only, no gamma manipulation!)
+apply_blackout() {
+    local display="$1"
+    echo -e "${YELLOW}Applying blackout on display $display...${NC}"
+    
+    for output in $(get_outputs "$display"); do
+        echo "  Setting $output to minimum brightness..."
+        # Use 0 brightness - this should make screen black without color issues
+        DISPLAY="$display" xrandr --output "$output" --brightness 0 2>/dev/null || {
+            # Some drivers don't accept 0, try 0.001
+            DISPLAY="$display" xrandr --output "$output" --brightness 0.001 2>/dev/null || {
+                echo -e "${RED}Failed to set brightness for $output${NC}"
+            }
+        }
+    done
+}
+# Restore brightness
+restore_brightness() {
+    local display="$1"
+    echo -e "${YELLOW}Restoring display $display...${NC}"
+    
+    # First, ensure gamma is normal (in case it got messed up)
+    for output in $(get_outputs "$display"); do
+        DISPLAY="$display" xrandr --output "$output" --gamma 1:1:1 2>/dev/null || true
+    done
+    
+    # Restore brightness from backup
+    if [ -f "$BRIGHTNESS_BACKUP" ]; then
+        while IFS='=' read -r output brightness; do
+            echo "  Restoring $output to brightness $brightness"
+            DISPLAY="$display" xrandr --output "$output" --brightness "$brightness" 2>/dev/null || {
+                echo -e "${YELLOW}Could not restore, setting to default 1.0${NC}"
+                DISPLAY="$display" xrandr --output "$output" --brightness 1.0 2>/dev/null
+            }
+        done < "$BRIGHTNESS_BACKUP"
+    else
+        # No backup - restore to defaults
+        for output in $(get_outputs "$display"); do
+            echo "  Restoring $output to default brightness"
+            DISPLAY="$display" xrandr --output "$output" --brightness 1.0 --gamma 1:1:1 2>/dev/null
+        done
+    fi
+    
+    # Also reset xgamma to be safe
+    DISPLAY="$display" xgamma -gamma 1.0 2>/dev/null || true
+}
+
+# State management
+get_state() {
+    [ -f "$STATE_FILE" ] && cat "$STATE_FILE" || echo "normal"
+}
+
+set_state() {
+    echo "$1" > "$STATE_FILE"
+}
+# Main toggle function
+toggle() {
+    local display=$(detect_display)
+    local state=$(get_state)
+    
+    echo "Display: $display"
+    echo "Current state: $state"
+    
+    if [ "$state" = "normal" ]; then
+        save_brightness "$display"
+        apply_blackout "$display"
+        set_state "blackout"
+        echo -e "${GREEN}✓ Blackout enabled${NC}"
+    else
+        restore_brightness "$display"
+        set_state "normal"
+        echo -e "${GREEN}✓ Display restored${NC}"
+    fi
+}
+
+# Force fix color issues
+fix_colors() {
+    local display=$(detect_display)
+    echo -e "${YELLOW}Fixing color calibration on display $display...${NC}"
+    
+    for output in $(get_outputs "$display"); do
+        echo "  Resetting $output..."
+        # Reset everything to defaults
+        DISPLAY="$display" xrandr --output "$output" --gamma 1.0:1.0:1.0 --brightness 1.0 2>/dev/null
+    done
+    
+    # Reset xgamma
+    DISPLAY="$display" xgamma -rgamma 1.0 -ggamma 1.0 -bgamma 1.0 2>/dev/null || true
+    
+    # Clear any xcalib settings if it exists
+    command -v xcalib &>/dev/null && DISPLAY="$display" xcalib -clear 2>/dev/null || true
+    
+    set_state "normal"
+    echo -e "${GREEN}✓ Colors fixed${NC}"
+}
+
+# Status
+status() {
+    local display=$(detect_display)
+    local state=$(get_state)
+    
+    echo "Blackout v$VERSION Status:"
+    echo "  State: $state"
+    echo "  Display: $display"
+    echo "  Outputs:"
+    for output in $(get_outputs "$display"); do
+        local brightness=$(DISPLAY="$display" xrandr --verbose 2>/dev/null | awk -v out="$output" '
+            $0 ~ out " connected" {found=1}
+            found && /Brightness:/ {print $2; exit}
+        ')
+        echo "    $output (brightness: ${brightness:-1.0})"
+    done
+}
+# Usage
+usage() {
+    cat <<EOF
+$SCRIPT_NAME v$VERSION - Simple brightness-based display blackout
+
+Usage:
+    $SCRIPT_NAME [COMMAND]
+
+Commands:
+    toggle      Toggle blackout on/off (default)
+    on          Turn on blackout
+    off         Turn off blackout
+    fix         Fix color issues (if screen is tinted)
+    status      Show current status
+    help        Show this help
+
+This version uses ONLY brightness control (no gamma manipulation)
+to avoid color channel issues.
+
+Examples:
+    $SCRIPT_NAME on          # Black out display
+    $SCRIPT_NAME off         # Restore display
+    $SCRIPT_NAME fix         # Fix red/tinted screen
+
+Note: Screen will appear black but remote desktop stays normal.
+EOF
+}
+
+# Main command handler
+case "${1:-toggle}" in
+    toggle)
+        toggle
+        ;;
+    on)
+        if [ "$(get_state)" = "blackout" ]; then
+            echo "Already in blackout mode"
+        else
+            toggle
+        fi
+        ;;
+    off)
+        if [ "$(get_state)" = "normal" ]; then
+            echo "Already in normal mode"
+        else
+            toggle
+        fi
+        ;;
+    fix|fix-colors|repair)
+        fix_colors
+        ;;
+    status)
+        status
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        usage
+        exit 1
+        ;;
+esac

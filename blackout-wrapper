@@ -1,0 +1,13 @@
+#!/bin/bash
+# Quick test script for blackout with proper display
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Auto-detect display
+if [ -e /tmp/.X1-lock ]; then
+    export DISPLAY=":1"
+elif [ -e /tmp/.X0-lock ]; then
+    export DISPLAY=":0"
+fi
+
+echo "Using DISPLAY=$DISPLAY"
+"$SCRIPT_DIR/blackout" "$@"

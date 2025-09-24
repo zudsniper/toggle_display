@@ -1,0 +1,35 @@
+#!/bin/bash
+# blackout-window - Alternative approach using fullscreen black window
+
+DISPLAY="${DISPLAY:-:1}"
+PID_FILE="/tmp/blackout_window.pid"
+
+case "$1" in
+    on)
+        if [ -f "$PID_FILE" ]; then
+            echo "Blackout window already running"
+            exit 0
+        fi
+        
+        # Create fullscreen black window using xterm with black background
+        DISPLAY="$DISPLAY" xterm -fullscreen -bg black -fg black -T "BLACKOUT" -e "echo 'BLACKOUT MODE - Press Ctrl+C to exit'; sleep infinity" &
+        echo $! > "$PID_FILE"
+        echo "Blackout window started (PID: $!)"
+        echo "To remove: $0 off"
+        ;;
+        
+    off)
+        if [ -f "$PID_FILE" ]; then
+            kill $(cat "$PID_FILE") 2>/dev/null
+            rm -f "$PID_FILE"
+            echo "Blackout window closed"
+        else
+            echo "No blackout window running"
+        fi
+        ;;
+        
+    *)
+        echo "Usage: $0 {on|off}"
+        echo "Creates a fullscreen black window to hide display content"
+        ;;
+esac
