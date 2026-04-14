@@ -111,11 +111,11 @@ if [ -n "${WAYLAND_DISPLAY:-}" ]; then
     echo
     echo -e "${BLUE}Wayland Setup Notes:${NC}"
     echo "1. For better Wayland support, consider installing wlr-randr:"
-    echo "   ${GREEN}sudo apt install wlr-randr${NC} (if available)"
+    echo -e "   ${GREEN}sudo apt install wlr-randr${NC} (if available)"
     echo
     echo "2. For hardware-level control, ddcutil is recommended:"
-    echo "   ${GREEN}sudo apt install ddcutil${NC}"
-    echo "   ${GREEN}sudo usermod -a -G i2c $USER${NC}"
+    echo -e "   ${GREEN}sudo apt install ddcutil${NC}"
+    echo -e "   ${GREEN}sudo usermod -a -G i2c $USER${NC}"
     echo "   Then logout and login again"
 fi
 
@@ -136,11 +136,11 @@ echo -e "${GREEN}║     Installation Complete! 🎉      ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════╝${NC}"
 echo
 echo "Usage:"
-echo "  ${BLUE}blackout${NC}         - Toggle display blackout"
-echo "  ${BLUE}blackout on${NC}      - Enable blackout"
-echo "  ${BLUE}blackout off${NC}     - Disable blackout"
-echo "  ${BLUE}blackout status${NC}  - Check current state"
-echo "  ${BLUE}blackout help${NC}    - Show help"
+echo -e "  ${BLUE}blackout${NC}         - Toggle display blackout"
+echo -e "  ${BLUE}blackout on${NC}      - Enable blackout"
+echo -e "  ${BLUE}blackout off${NC}     - Disable blackout"
+echo -e "  ${BLUE}blackout status${NC}  - Check current state"
+echo -e "  ${BLUE}blackout help${NC}    - Show help"
 echo
-echo "Script location: ${GREEN}$SCRIPT_PATH${NC}"
-echo "Repository: ${BLUE}$REPO_URL${NC}"
+echo -e "Script location: ${GREEN}$SCRIPT_PATH${NC}"
+echo -e "Repository: ${BLUE}$REPO_URL${NC}"
