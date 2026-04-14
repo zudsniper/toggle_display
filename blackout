@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="2.0.0"
+VERSION="2.1.0"
 SCRIPT_NAME="blackout"
 STATE_DIR="$HOME/.local/state/$SCRIPT_NAME"
 STATE_FILE="$STATE_DIR/display_state"
@@ -116,26 +116,25 @@ apply_blackout() {
     
     echo -e "${YELLOW}Applying aggressive blackout on display $display...${NC}"
     
-    # Method 1: Set gamma and brightness to near-zero for all outputs
+    # Set brightness to zero for all outputs (gamma stays at 1:1:1 to avoid color shifts)
     for output in $(get_displays); do
         echo "  Blackout $output..."
-        # Use extremely low values (0.01 is darker than 0.1)
-        xrandr --output "$output" --gamma 0.01:0.01:0.01 --brightness 0.01 2>/dev/null || {
-            # Fallback to slightly higher if driver rejects
-            xrandr --output "$output" --gamma 0.05:0.05:0.05 --brightness 0.05 2>/dev/null || {
-                echo -e "${YELLOW}    Warning: Could not set extreme values, trying moderate${NC}"
-                xrandr --output "$output" --gamma 0.1:0.1:0.1 --brightness 0.1 2>/dev/null
+        xrandr --output "$output" --brightness 0 2>/dev/null || {
+            # Some drivers reject 0, try near-zero
+            xrandr --output "$output" --brightness 0.01 2>/dev/null || {
+                echo -e "${YELLOW}    Warning: Could not set zero brightness, trying minimum${NC}"
+                xrandr --output "$output" --brightness 0.1 2>/dev/null
             }
         }
     done
-    
-    # Method 2: Use xgamma for additional darkening
+
+    # Use xgamma for additional darkening if brightness alone isn't enough
     if command -v xgamma &>/dev/null; then
         echo "  Applying xgamma blackout..."
-        xgamma -gamma 0.01 2>/dev/null || xgamma -gamma 0.1 2>/dev/null || true
+        xgamma -rgamma 0.01 -ggamma 0.01 -bgamma 0.01 2>/dev/null || true
     fi
-    
-    # Method 3: Try xcalib if available (often more effective)
+
+    # Try xcalib if available (often more effective)
     if command -v xcalib &>/dev/null; then
         echo "  Applying xcalib blackout..."
         xcalib -co 1 -a 2>/dev/null || true  # Set contrast to minimum
@@ -170,10 +169,16 @@ restore_display() {
     fi
     
     # Restore xgamma if available
-    if command -v xgamma &>/dev/null && [ -f "$STATE_DIR/xgamma_backup" ]; then
-        local gamma_values=$(cat "$STATE_DIR/xgamma_backup" 2>/dev/null || echo "1.000, Green  1.000, Blue  1.000")
-        local red=$(echo "$gamma_values" | grep -oE "^[0-9.]+" || echo "1.0")
-        xgamma -rgamma "$red" 2>/dev/null || true
+    if command -v xgamma &>/dev/null; then
+        if [ -f "$STATE_DIR/xgamma_backup" ]; then
+            local gamma_values=$(cat "$STATE_DIR/xgamma_backup" 2>/dev/null || echo "")
+            local red=$(echo "$gamma_values" | grep -oP '^\s*\K[0-9.]+' || echo "1.0")
+            local green=$(echo "$gamma_values" | grep -oP 'Green\s+\K[0-9.]+' || echo "1.0")
+            local blue=$(echo "$gamma_values" | grep -oP 'Blue\s+\K[0-9.]+' || echo "1.0")
+            xgamma -rgamma "$red" -ggamma "$green" -bgamma "$blue" 2>/dev/null || true
+        else
+            xgamma -rgamma 1.0 -ggamma 1.0 -bgamma 1.0 2>/dev/null || true
+        fi
     fi
     
     # Reset xcalib if available
