@@ -121,7 +121,8 @@ fi
 
 # Test installation
 echo
-echo -e "${YELLOW}Testing installation...${NC}"if "$SCRIPT_PATH" version &>/dev/null; then
+echo -e "${YELLOW}Testing installation...${NC}"
+if "$SCRIPT_PATH" version &>/dev/null; then
     echo -e "${GREEN}✓ Installation successful!${NC}"
 else
     echo -e "${RED}✗ Installation test failed${NC}"
